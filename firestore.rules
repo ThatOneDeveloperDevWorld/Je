@@ -14,8 +14,14 @@ service cloud.firestore {
       allow read: if request.auth != null && (request.auth.uid == uid || isAdmin());
       allow create: if request.auth != null && request.auth.uid == uid;
       allow update: if request.auth != null && request.auth.uid == uid
-                    && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['banned','isGM','coin']);
+                    && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['banned','isGM','coin','creditScore'])
+                    && (!('roleId' in resource.data) || request.resource.data.roleId == resource.data.roleId);
       allow update, delete: if isAdmin();
+    }
+    match /counters/{c} {                              // numeric role ids: create at 1, or +1 only
+      allow read: if request.auth != null;
+      allow create: if request.auth != null && request.resource.data.n == 1;
+      allow update: if request.auth != null && request.resource.data.n == resource.data.n + 1;
     }
     match /moderation/{doc=**} { allow read, write: if isAdmin(); }
     match /{other=**} { allow read, write: if false; }  // closed by default; open collections as handlers need them
