@@ -1,0 +1,1 @@
+[1,["1eGEc7pXxMOJqAhe70Y7qL"],["value"],[["cc.AnimationClip",["_name","_duration","curveData"],1,11]],[[0,0,1,2,3]],[[0,"moveIn",0.25,[{},"paths",11,[{},"astro",11,[{"props":{"x":[{"frame":0,"value":-432.544,"curve":"quadOut"},{"frame":0.25,"value":-219.784}]}},"comps",11,[{},"cc.Sprite",11,[{},"spriteFrame",12,[[[{"frame":0},"value",6,0]],11]]]]]]]],0,0,[0],[0],[0]]

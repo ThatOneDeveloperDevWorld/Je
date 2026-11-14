@@ -1,0 +1,23 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // CHANGE THIS to your Firebase Auth UID once you have signed in once (moderation gate).
+    function isAdmin() { return request.auth != null && request.auth.uid == 'REPLACE_WITH_YOUR_UID'; }
+
+    match /usernames/{name} {                         // public existence check; reserve-once
+      allow get: if true;
+      allow create: if request.auth != null && request.resource.data.uid == request.auth.uid
+                    && name == name.lower() && !exists(/databases/$(database)/documents/usernames/$(name));
+      allow update, delete: if isAdmin();
+    }
+    match /users/{uid} {
+      allow read: if request.auth != null && (request.auth.uid == uid || isAdmin());
+      allow create: if request.auth != null && request.auth.uid == uid;
+      allow update: if request.auth != null && request.auth.uid == uid
+                    && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['banned','isGM','coin']);
+      allow update, delete: if isAdmin();
+    }
+    match /moderation/{doc=**} { allow read, write: if isAdmin(); }
+    match /{other=**} { allow read, write: if false; }  // closed by default; open collections as handlers need them
+  }
+}
