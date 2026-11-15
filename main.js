@@ -104,7 +104,7 @@ window.boot = function () {
         if (err) return console.error(err.message, err.stack);
         count++;
         if (count === bundleRoot.length + 1) {
-            window.JE.patchOrange(); cc.game.run(option, onStart);
+            window.JE.patchOrange(); window.JE.patchAssets(); cc.game.run(option, onStart);
         }
     }
 

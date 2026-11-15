@@ -22,14 +22,19 @@
   JEBackend.buildRole=function(d){
     var r=Object.assign({},DEFAULT_ROLE_KEYS);
     ['level','exp','coin','diamond','creditScore'].forEach(function(k){ if(typeof d[k]==='number') r[k]=d[k]; });
-    return Object.assign(r,{ id:d.roleId, uId:d.roleId, sId:1, userName:d.account, userIntro:d.userIntro||'',
+    return Object.assign(r,{ id:d.roleId, uId:d.roleId, sId:1, userName:d.userName||d.account, userIntro:d.userIntro||'',
       userImg:d.userImg||'', authed:true, creatorVersion:'0.8.0', channel:'web', createAt:ms(d.createdAt),
       myGameMaxCnt:d.myGameMaxCnt||C().startGameSlots, myGoodsMaxCnt:d.myGoodsMaxCnt||C().startGoodsSlots,
-      completeTaskIds:d.completeTaskIds||[], guideVersion:d.guideVersion||'' });
+      completeTaskIds:d.completeTaskIds||[], guideVersion:d.guideVersion||'', games:[], customColors:[] });
   };
   JEBackend.register('game_login', async function(){
-    var d=await store().getOrCreateRole();
-    return { role: JEBackend.buildRole(d), dynamicConfig:{}, hotGameIdList:[], newGameDatas:[], followGameDatas:[],
-             gameSlotUnlockLvls:C().gameSlotUnlockLvls, goodsSlotUnlockLvls:C().goodsSlotUnlockLvls };  // dynamicConfig still empty
+    var d=await store().getOrCreateRole(), role=JEBackend.buildRole(d), ix={games:[],colors:[],groups:[],conf:{}};
+    if(JEBackend.loadEditorIndex) ix=await JEBackend.loadEditorIndex();          // editor id lists live inside Game_Login
+    role.games=ix.games; role.customColors=ix.colors;
+    var c=ix.conf;
+    return { role: role, dynamicConfig:{}, hotGameIdList:[], newGameDatas:[], followGameDatas:[],
+             roleGameConf:{tileConfIds:c.tile||[],actorConfIds:c.actor||[],deviceConfIds:c.device||[],propConfIds:c.prop||[],weaponConfIds:c.weapon||[],bulletConfIds:c.bullet||[]},
+             customActorGroups:ix.groups,
+             gameSlotUnlockLvls:C().gameSlotUnlockLvls, goodsSlotUnlockLvls:C().goodsSlotUnlockLvls };
   });
 })();

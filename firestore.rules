@@ -18,6 +18,26 @@ service cloud.firestore {
                     && (!('roleId' in resource.data) || request.resource.data.roleId == resource.data.roleId);
       allow update, delete: if isAdmin();
     }
+    // Editor data (games, worlds, confs, vars, meta/index): owner-only. Docs are capped at 1 MB by Firestore itself.
+    match /users/{uid}/{sub}/{doc=**} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+    match /published/{gid} {                          // public listing of published games
+      allow read: if true;
+      allow create: if request.auth != null && request.resource.data.uid == request.auth.uid;
+      allow update: if request.auth != null && resource.data.uid == request.auth.uid && request.resource.data.uid == request.auth.uid;
+      allow delete: if request.auth != null && resource.data.uid == request.auth.uid;
+    }
+    match /blobs/{id} {                               // images + published game packs (see backend/firebase-blobs.js)
+      allow read: if true;
+      allow create: if request.auth != null && request.resource.data.uid == request.auth.uid && request.resource.data.size <= 8388608;
+      allow delete: if request.auth != null && resource.data.uid == request.auth.uid;
+      match /c/{i} {
+        allow read: if true;
+        allow create: if request.auth != null && get(/databases/$(database)/documents/blobs/$(id)).data.uid == request.auth.uid;
+        allow delete: if request.auth != null && get(/databases/$(database)/documents/blobs/$(id)).data.uid == request.auth.uid;
+      }
+    }
     match /counters/{c} {                              // numeric role ids: create at 1, or +1 only
       allow read: if request.auth != null;
       allow create: if request.auth != null && request.resource.data.n == 1;

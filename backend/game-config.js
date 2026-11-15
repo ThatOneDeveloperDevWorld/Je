@@ -2,5 +2,6 @@
 window.JE_GAME_CONFIG={
   startGameSlots:3, startGoodsSlots:3,                   // role.myGameMaxCnt / myGoodsMaxCnt for a new account
   gameSlotUnlockLvls:[0,0,0,5,10,15,20,30,40,50],        // gameSlotUnlockLvls[ownedSlots] = level needed for the next slot
-  goodsSlotUnlockLvls:[0,0,0,5,10,15,20,30,40,50]
+  goodsSlotUnlockLvls:[0,0,0,5,10,15,20,30,40,50],
+  sensitiveWords:[]                                      // words blocked at publish time (case-insensitive); the original server's list isn't recoverable
 };
