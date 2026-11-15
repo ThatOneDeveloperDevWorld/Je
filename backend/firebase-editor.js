@@ -2,7 +2,7 @@
 // Layout (all under users/{uid}/, owner-only by rules):
 //   meta/index        id lists the game expects inside Game_Login (games, tile, actor, ...) + colors + actor groups
 //   games/{id}        game data as JSON string (j) + server-owned lists (worldIds, gameShopIds, gameRankIds)
-//   worlds/{id}       info JSON (infoJ) + layout as Firestore Blob (layout) + gameId
+//   worlds/{id}       info JSON (infoJ) + layout as base64 TEXT (layout) + gameId
 //   vars/{id}         game variables (gameId, j)
 //   conf_<type>/{id}  tile | actor | device | prop | weapon | bullet confs as JSON (j)
 //   creative/{key}    per-game template confs
@@ -20,8 +20,7 @@
   function dec(s){ return s?JSON.parse(s):null; }
   function list(d,k){ return Array.isArray(d[k])?d[k].slice():[]; }
   function u8(x){ return x instanceof Uint8Array?x:new Uint8Array(x); }
-  function blob(x){ var b=u8(x); if(b.length>MAX) throw new Error('world too large for Firestore ('+b.length+' bytes)');
-    return firebase.firestore.Blob.fromUint8Array(b); }
+  function blob(x){ var t=JEBlobs.encode(u8(x)); if(t.length>MAX) throw new Error('world too large for Firestore ('+t.length+' base64 chars)'); return t; }
   function without(a,ids){ return a.filter(function(x){return ids.indexOf(x)<0;}); }
   async function mutateIndex(fn){ var ref=idx();
     return db().runTransaction(async function(tx){ var s=await tx.get(ref), d=s.exists?s.data():{};
@@ -91,7 +90,7 @@
   B.register('game_getworlddata', async function(p){ var need=!!p.needData;
     var datas=await Promise.all((p.ids||[]).map(async function(id){
       var s=await col('worlds').doc(id).get(); if(!s.exists) return null; var d=s.data(), o={id:id,info:dec(d.infoJ)};
-      if(need&&d.layout) o.layoutMin=d.layout.toUint8Array(); return o; }));
+      if(need&&d.layout) o.layoutMin=typeof d.layout==='string'?JEBlobs.decode(d.layout):d.layout.toUint8Array(); return o; }));   // old docs: Firestore Blob
     return {datas:datas}; });
   B.register('game_delworlddata', async function(p){ var ids=p.ids||[];
     for(var i=0;i<ids.length;i++){ var id=ids[i], wref=col('worlds').doc(id);
@@ -153,12 +152,20 @@
   B.register('game_updateuserinfo', async function(p){ var u={};
     if(p.userName!=null){ var n=String(p.userName).trim(); if(!n||n.length>30) return {__code:20010,__error:'bad name'}; u.userName=n; }
     if(p.userIntro!=null) u.userIntro=String(p.userIntro).slice(0,200);
-    if(p.userImg!=null) u.userImg=String(p.userImg);
+    if(p.userImg!=null){ u.userImg=String(p.userImg); if(u.userImg.length>JEAssets.IMG_MAX) return {__code:20012,__error:'avatar too large'}; }
     if(Object.keys(u).length) await db().collection('users').doc(uid()).set(u,{merge:true});
     return {code:0,sensitiveWords:[]}; });
-  // url is relative to gameEnv.fileCDN ("jefs://", see firebase-blobs.js); the file lives in Firestore.
+  // Images are BASE64 inside the url itself ("pixel/<b64url>.png", fileCDN = "b64://"): no hosting, no review. See firebase-blobs.js.
   B.register('game_uploadimage', async function(p){
     if(!p.content) return {isOK:false,url:'',reason:'empty image',sensitiveImageResult:null};
-    var id=await JEBlobs.put(p.content,'image/png','png');
-    return {isOK:true,url:id,reason:'',sensitiveImageResult:null}; });
+    var url=JEAssets.encode(p.content,'png');
+    if(url.length>JEAssets.IMG_MAX) return {isOK:false,url:'',reason:'image too large ('+url.length+' chars, max '+JEAssets.IMG_MAX+')',sensitiveImageResult:null};
+    return {isOK:true,url:url,reason:'',sensitiveImageResult:null}; });
+  // Avatar: the client marks it "in review" and waits for a server push; we approve instantly and push it.
+  B.register('game_updateuserimg', async function(p){
+    var img=String(p.newUserImg||''); if(img.length>JEAssets.IMG_MAX) return {__code:20012,__error:'avatar too large'};
+    var u=uid(); await db().collection('users').doc(u).set({userImg:img},{merge:true});
+    var mine=await db().collection('published').where('uid','==',u).get(); for(var i=0;i<mine.docs.length;i++) await mine.docs[i].ref.set({userImg:img},{merge:true});
+    setTimeout(function(){ if(window.JE&&JE.push) JE.push('Game_RRoleNewUserImgNotify',{status:1,userImg:img}); },0);   // status 1 = ManReviewStatus.success
+    return {}; });
 })();

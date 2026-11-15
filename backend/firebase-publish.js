@@ -19,11 +19,11 @@
 
   B.register('game_getneedreviewimagelist', async function(){ return {needImageList:[]}; });   // no image review queue
 
-  // cdnUrl is relative to gameEnv.fileCDN ("jefs://"), same convention as Game_UploadImage.
+  // cdnUrl is relative to gameEnv.fileCDN ("b64://"), full address = "b64://"+cdnUrl, resolved by firebase-blobs.js.
   B.register('game_uploadreleasegame', async function(p){
     if(!p.content) return {__code:30001,__error:'empty release pack'};
     var bin=u8(p.content); if(bin.length>JEBlobs.MAX) return {__code:30003,__error:'release pack too large ('+bin.length+' bytes, max '+JEBlobs.MAX+')'};
-    return {cdnUrl:await JEBlobs.put(bin,'application/octet-stream','bin')}; });
+    return {cdnUrl:'pack/'+await JEBlobs.put(bin,'application/octet-stream','bin')}; });
 
   B.register('game_publishgame', async function(p){
     var id=p.id; if(!id||!p.gameDataCdnUrl) return {__code:30002,__error:'bad publish request'};

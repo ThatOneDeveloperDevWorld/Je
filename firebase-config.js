@@ -7,5 +7,5 @@ window.JE_FIREBASE_CONFIG = {
   appId: "1:654594117243:web:d264f28e95055fd93b9cde",
   measurementId: "G-SJX88RWT3T"
 };
-// Files live in Firestore (no Storage plan needed); "jefs://<id>" addresses are resolved by backend/firebase-blobs.js.
-window.JE_FILE_CDN = "jefs://";
+// User-made images are base64 inside their own url ("b64://" + "pixel/<data>.png"); decoded by backend/firebase-blobs.js.
+window.JE_FILE_CDN = "b64://";

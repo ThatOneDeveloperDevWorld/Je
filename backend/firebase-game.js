@@ -25,7 +25,7 @@
     return Object.assign(r,{ id:d.roleId, uId:d.roleId, sId:1, userName:d.userName||d.account, userIntro:d.userIntro||'',
       userImg:d.userImg||'', authed:true, creatorVersion:'0.8.0', channel:'web', createAt:ms(d.createdAt),
       myGameMaxCnt:d.myGameMaxCnt||C().startGameSlots, myGoodsMaxCnt:d.myGoodsMaxCnt||C().startGoodsSlots,
-      completeTaskIds:d.completeTaskIds||[], guideVersion:d.guideVersion||'', games:[], customColors:[] });
+      completeTaskIds:d.completeTaskIds||[], guideVersion:d.guideVersion||'', games:[], customColors:[], newUserImg:'', newUserImgReviewStatus:1 });
   };
   JEBackend.register('game_login', async function(){
     var d=await store().getOrCreateRole(), role=JEBackend.buildRole(d), ix={games:[],colors:[],groups:[],conf:{}};
