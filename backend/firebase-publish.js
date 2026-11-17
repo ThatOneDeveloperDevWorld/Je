@@ -29,27 +29,29 @@
     var id=p.id; if(!id||!p.gameDataCdnUrl) return {__code:30002,__error:'bad publish request'};
     var u=uid(), gref=col('games').doc(id), uref=db().collection('users').doc(u), pref=db().collection('published').doc(id), now=Date.now();
     await db().runTransaction(async function(tx){
-      var gs=await tx.get(gref), us=await tx.get(uref); if(!gs.exists) throw new Error('game not found '+id);
-      var g=gs.data(), ud=us.exists?us.data():{}, first=g.firstPublishTime||now;
+      var gs=await tx.get(gref), us=await tx.get(uref), ps=await tx.get(pref); if(!gs.exists) throw new Error('game not found '+id);
+      var g=gs.data(), ud=us.exists?us.data():{}, first=g.firstPublishTime||now, plays=ps.exists?(ps.data().playCnt||0):(g.playCnt||0);   // counts survive republish/take-down
       tx.set(gref,Object.assign({},g,{status:1,isOff:false,publishTimes:(g.publishTimes||0)+1,firstPublishTime:first,lastPublishTime:now}));
       tx.set(pref,{uid:u,gameId:id,playerId:ud.roleId||0,userName:ud.userName||ud.account||'',userImg:ud.userImg||'',
         name:String(p.name||''),advert:String(p.advert||''),iconTextureName:String(p.iconTextureName||''),dataVersion:String(p.dataVersion||''),
         gameDataCdnUrl:String(p.gameDataCdnUrl),gameTags:Array.isArray(p.gameTags)?p.gameTags.map(String):[],openCreativeGame:!!p.openCreativeGame,
-        openData:JSON.stringify(p.openData||{}),publishedAt:now,firstPublishTime:first,lastPublishTime:now,thumbCnt:0,playCnt:0});
+        openData:JSON.stringify(p.openData||{}),publishedAt:now,firstPublishTime:first,lastPublishTime:now,thumbCnt:0,playCnt:plays});
     });
     return {id:id,code:0,sensitiveWords:[]}; });
 
   // "Take down": hides it from discovery and marks it off; publishing again brings it back.
   B.register('game_ownoffgame', async function(p){
     var gref=col('games').doc(p.id), pref=db().collection('published').doc(p.id);
-    await db().runTransaction(async function(tx){ var gs=await tx.get(gref); if(!gs.exists) throw new Error('game not found '+p.id);
-      tx.set(gref,Object.assign({},gs.data(),{status:4,isOff:true})); tx.delete(pref); });
+    await db().runTransaction(async function(tx){ var gs=await tx.get(gref), ps=await tx.get(pref); if(!gs.exists) throw new Error('game not found '+p.id);
+      tx.set(gref,Object.assign({},gs.data(),{status:4,isOff:true,playCnt:ps.exists?(ps.data().playCnt||0):(gs.data().playCnt||0)})); if(ps.exists) tx.delete(pref); });
     return {}; });
 
   function cell(id,d){ return {id:id,uId:'',playerId:d.playerId||0,name:d.name,advert:d.advert,iconTextureName:d.iconTextureName,status:1,isOff:false,
     thumbCnt:d.thumbCnt||0,collectionCnt:0,playCnt:d.playCnt||0,hurryCnt:0,worldIds:[],variableIds:[],gameShopIds:[],gameRankIds:[],variableDatas:[],data:{},
     thawTime:0,isOldTangData:false,offReason:[],openCreativeGame:!!d.openCreativeGame,publishTimes:1,creativeSourceUId:'',openData:parse(d.openData),
     gameDataCdnUrl:d.gameDataCdnUrl,firstPublishTime:d.firstPublishTime||0,lastPublishTime:d.lastPublishTime||0}; }
+
+  B.publishedCell=cell;           // shared with firebase-discover.js
 
   // New Game tab / Discover: newest published games first.
   B.register('game_getnewgamelist', async function(p){
@@ -59,9 +61,9 @@
   // Cover page of a published game (also what "play" loads: releaseGameData.gameDataCdnUrl / creativeGameData.packUrl).
   B.register('game_getgamedetail', async function(p){
     var s=await db().collection('published').doc(p.id).get(); if(!s.exists) return {__code:30004,__error:'game not published'};
-    var d=s.data(), od=parse(d.openData);
+    var d=s.data(), od=parse(d.openData), played=(await col('played').doc(p.id).get()).exists;
     return {authorMsg:{id:d.playerId||0,userName:d.userName,coin:0,diamond:0,level:1,creditScore:3,isFollow:false,authed:true,userImg:d.userImg||'',fansCount:0,followsCount:0},
-      releaseGameData:{id:p.id,name:d.name,iconTextureName:d.iconTextureName,advert:d.advert,status:1,isPlay:false,isThumb:false,isHurry:false,isCollection:false,
+      releaseGameData:{id:p.id,name:d.name,iconTextureName:d.iconTextureName,advert:d.advert,status:1,isPlay:played,isThumb:false,isHurry:false,isCollection:false,
         thumbCnt:d.thumbCnt||0,collectionCnt:0,playCnt:d.playCnt||0,hurryCnt:0,reportCnt:0,dataVersion:d.dataVersion,gameDataCdnUrl:d.gameDataCdnUrl,gameTags:d.gameTags||[],
         openCreativeGame:!!d.openCreativeGame,creativeSourceUId:'',openData:od,lastPublishTime:d.lastPublishTime||0,hurryList:[],playUserList:[],tagList:[]},
       gameTopComment:{uId:'',gameId:p.id,id:'',commentsCnt:0,commentsCntSum:0,comments:[]},

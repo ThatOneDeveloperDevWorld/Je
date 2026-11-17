@@ -2,10 +2,8 @@
 (function(){
   var EMPTY={
     game_getgiftdyncfg:        {cfg:{datas:[]}},                               // gift catalogue: server data, not recovered
-    game_getonedynamicconfig:  {dynamicConfig:{}},
     game_getchosengoodsids:    {goodsIds:[],recommendGoodsIds:[]},              // Store > Featured
     game_getnewcommentlistv2:  {startIndex:0,newCommentCnt:0,commentList:[]},   // Message > Comments
-    game_getrecommendgameidlist:{recommendList:[]}                              // Discover > Editor's Pick
   };
   Object.keys(EMPTY).forEach(function(k){ JEBackend.register(k,function(){ return JSON.parse(JSON.stringify(EMPTY[k])); }); });
 

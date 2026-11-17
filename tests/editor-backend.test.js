@@ -12,13 +12,13 @@ const D=path=>({path,id:path.split('/').pop(),get:async()=>{const d=S.get(path);
   set:async(v,o)=>{strict(v);S.set(path,o&&o.merge?Object.assign({},S.get(path),v):v);},delete:async()=>{S.delete(path);},collection:c=>C(path+'/'+c)});
 const C=path=>({doc:id=>D(path+'/'+(id||'a'+(++n).toString(36)+Math.random().toString(36).slice(2,6))),
   orderBy:(f,dir)=>({limit:m=>({get:async()=>({docs:kids(path).map(k=>({id:k.split('/').pop(),ref:D(k),data:()=>clone(S.get(k))})).sort((a,b)=>dir==='desc'?b.data()[f]-a.data()[f]:a.data()[f]-b.data()[f]).slice(0,m)})})}),
-  where:(f,_,v)=>({get:async()=>({docs:kids(path).filter(k=>S.get(k)[f]===v).map(k=>({id:k.split('/').pop(),ref:D(k),data:()=>clone(S.get(k))}))})})});
+  where:(f,op,v)=>{const q={limit:()=>q,get:async()=>({docs:kids(path).filter(k=>op==='array-contains'?(Array.isArray(S.get(k)[f])&&S.get(k)[f].includes(v)):S.get(k)[f]===v).map(k=>({id:k.split('/').pop(),ref:D(k),data:()=>clone(S.get(k))}))})};return q;}});
 const db={collection:C,batch:()=>{const ops=[];return{delete:r=>ops.push(r),commit:async()=>{for(const r of ops) await r.delete();}};},
   runTransaction:async fn=>{const w=[];let wrote=false;const tx={get:async r=>{if(wrote) throw new Error('read after write in tx');return r.get();},
     set:(r,v)=>{strict(v);wrote=true;w.push(()=>r.set(v));},delete:r=>{wrote=true;w.push(()=>r.delete());}};const res=await fn(tx);for(const f of w) await f();return res;}};
 global.window=global; global.firebase={firestore:{Blob:Blob_}};
 for(const f of ['backend/backend.js']) (0,eval)(fs.readFileSync(f,'utf8')); JEBackend.db=db; JEBackend.auth={currentUser:{uid:'u1'}};
-for(const f of ['backend/game-config.js','backend/firebase-game.js','backend/firebase-blobs.js','backend/firebase-editor.js','backend/firebase-publish.js','shims/orange-transport.js']) (0,eval)(fs.readFileSync(f,'utf8'));
+for(const f of ['backend/game-config.js','backend/firebase-game.js','backend/firebase-blobs.js','backend/firebase-editor.js','backend/firebase-publish.js','backend/firebase-discover.js','shims/orange-transport.js']) (0,eval)(fs.readFileSync(f,'utf8'));
 JEBackend.store={getOrCreateRole:async()=>({roleId:7,account:'tester'})};
 const call=async(c,p)=>{const r=await JEBackend.dispatch(c,p,'t'); assert.strictEqual(r.code,0,c+' -> '+r.error); return r.decBody;};
 const bad=async(c,p)=>(await JEBackend.dispatch(c,p,'t')).code;
@@ -90,6 +90,28 @@ const bad=async(c,p)=>(await JEBackend.dispatch(c,p,'t')).code;
   const nl=await call('Game_GetNewGameList',{start:0,end:20,startMember:''}); assert.strictEqual(nl.gameDatas.length,1); assert.strictEqual(nl.gameDatas[0].iconTextureName,up.url,'game icon is the base64 image, visible with no review');
   const det=await call('Game_GetGameDetail',{id:g2}); assert.strictEqual(det.creativeGameData.packUrl,rel.cdnUrl); assert.strictEqual(det.authorMsg.userName,'Bob'); assert.strictEqual(det.releaseGameData.openData.openWorldIds[0],'w');
   assert.strictEqual(await bad('Game_GetGameDetail',{id:'nope'}),30004);
+  // ---------- Discover / Featured / remix lists ----------
+  await new Promise(r=>setTimeout(r,5)); const g3=(await call('Game_SaveRoleGameData',{id:null,data:{id:'',name:'Second',status:0,worldIds:[]}})).id;
+  await call('Game_PublishGame',{id:g3,name:'Second',advert:'two',iconTextureName:up.url,gameDataCdnUrl:rel.cdnUrl,gameTags:['Fun'],openCreativeGame:false,openData:{}});
+  const cards=(await call('Game_GetHomepageGameData',{ids:[g3,'nope',g2]})).gameDatas; assert.deepStrictEqual(cards.map(c=>c.id),[g3,g2],'missing games skipped, order kept');
+  assert.strictEqual(cards[0].iconTextureName,up.url); assert.strictEqual(cards[0].name,'Second'); assert.strictEqual(cards[1].openCreativeGame,true); assert(cards[0].lastPublishTime>1e12,'milliseconds, like TimeUtil.serverTime');
+  assert.deepStrictEqual((await call('Game_GetGameIdListByGameTag',{gameTag:'ZongBang',start:0,end:500})).gameIdList,[g3,g2],'Featured = all published, newest first');
+  assert.deepStrictEqual((await call('Game_GetGameIdListByGameTag',{gameTag:'ZongBang',start:1,end:2})).gameIdList,[g2]);
+  assert.deepStrictEqual((await call('Game_GetGameIdListByGameTag',{gameTag:'Fun',start:0,end:500})).gameIdList,[g3]); assert.deepStrictEqual((await call('Game_GetGameIdListByGameTag',{gameTag:'None'})).gameIdList,[]);
+  assert.deepStrictEqual((await call('Game_GetRecommendGameIdList',{count:1,showType:'RecommendComp'})).recommendList,[{id:g3,bk:'',st:''}]);
+  assert.deepStrictEqual((await call('Game_GetRecommendGameIdList',{count:12})).recommendList.map(r=>r.id),[g2],'each call hands out a fresh slice');
+  assert.deepStrictEqual((await call('Game_GetRecommendGameIdList',{count:12})).recommendList,[],'then runs dry (no endless repeats)');
+  JEBackend.resetDiscoverSession(); assert.strictEqual((await call('Game_GetRecommendGameIdList',{count:12})).recommendList.length,2);
+  assert.deepStrictEqual((await call('Game_GetOneDynamicConfig',{id:'GameChosenIds'})).dynamicConfig,[g3,g2]); assert.deepStrictEqual((await call('Game_GetOneDynamicConfig',{id:'Whatever'})).dynamicConfig,{});
+  assert.deepStrictEqual((await call('Game_GetSourceCreativeGameRank',{start:0,end:20})).gameDatas.map(c=>c.id),[g2],'only remixable games');
+  assert.deepStrictEqual((await call('Game_GetHomepageFollowUserGames',{startIndex:0,endIndex:10})).gameDatas,[]);
+  for(const c of ['Game_ReportGameShow','Game_ReportGameClick','Game_ReportGoodsShow','Game_ReportGoodsClick','Game_ClickRecommendsGames']) await call(c,{});
+  assert.strictEqual((await call('Game_GetGameDetail',{id:g2})).releaseGameData.isPlay,false);
+  assert.deepStrictEqual((await call('Game_PlayGames',{ids:[g2,'nope']})).playCntList,[1,0]); assert.deepStrictEqual((await call('Game_PlayGames',{ids:[g2]})).playCntList,[1],'one count per player');
+  assert.strictEqual((await call('Game_GetGameDetail',{id:g2})).releaseGameData.isPlay,true); assert.strictEqual((await call('Game_GetGameDetail',{id:g2})).releaseGameData.playCnt,1);
+  assert.strictEqual((await call('Game_GetHomepageGameData',{ids:[g2]})).gameDatas[0].playCnt,1,'cards show the count'); await call('Game_PlayGameStatistics',{id:g2,playTime:42});
+  await call('Game_OwnOffGame',{id:g3}); JEBackend.resetDiscoverSession();
+  assert.deepStrictEqual((await call('Game_GetGameIdListByGameTag',{gameTag:'ZongBang'})).gameIdList,[g2],'taken-down games vanish from every list'); assert.deepStrictEqual((await call('Game_GetOneDynamicConfig',{id:'GameChosenIds'})).dynamicConfig,[g2]);
   // ---------- avatar: auto-approved + pushed, listings refresh ----------
   const pushed=[]; JE.push=(c,b)=>{pushed.push([c,b]);return true;};
   await call('Game_UpdateUserImg',{newUserImg:up.url}); await new Promise(r=>setTimeout(r,15));
@@ -98,9 +120,9 @@ const bad=async(c,p)=>(await JEBackend.dispatch(c,p,'t')).code;
   assert.strictEqual(await bad('Game_UpdateUserImg',{newUserImg:'pixel/'+'A'.repeat(401000)}),20012);
   // ---------- take down / republish / cascade ----------
   await call('Game_OwnOffGame',{id:g2}); assert.strictEqual((await call('Game_GetNewGameList',{start:0,end:20})).gameDatas.length,0); assert.strictEqual((await call('Game_GetRoleGameData',{ids:[g2]})).datas[0].status,4);
-  await call('Game_PublishGame',{id:g2,name:'Pub',gameDataCdnUrl:rel.cdnUrl}); assert.strictEqual((await call('Game_GetNewGameList',{start:0,end:20})).gameDatas.length,1);
+  await call('Game_PublishGame',{id:g2,name:'Pub',gameDataCdnUrl:rel.cdnUrl}); assert.strictEqual((await call('Game_GetNewGameList',{start:0,end:20})).gameDatas.length,1); assert.strictEqual((await call('Game_GetHomepageGameData',{ids:[g2]})).gameDatas[0].playCnt,1,'play count survives take-down + republish');
   assert((await call('Game_GetRoleCreativeConf',{gameId:gid})).confMap instanceof Map);
   await call('Game_DelWorldData',{ids:[w.id]}); assert.deepStrictEqual((await call('Game_GetRoleGameData',{ids:[gid]})).datas[0].worldIds,[]);
-  await call('Game_DelRoleGameData',{ids:[gid]}); assert.deepStrictEqual((await call('Game_Login',{})).role.games,[g2]);
+  await call('Game_DelRoleGameData',{ids:[gid]}); assert.deepStrictEqual((await call('Game_Login',{})).role.games,[g3,g2]);
   console.log('ALL EDITOR BACKEND TESTS PASSED');
 })().catch(e=>{console.error('FAIL',e);process.exit(1);});

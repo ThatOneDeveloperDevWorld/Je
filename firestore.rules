@@ -25,7 +25,10 @@ service cloud.firestore {
     match /published/{gid} {                          // public listing of published games
       allow read: if true;
       allow create: if request.auth != null && request.resource.data.uid == request.auth.uid;
-      allow update: if request.auth != null && resource.data.uid == request.auth.uid && request.resource.data.uid == request.auth.uid;
+      allow update: if request.auth != null && (
+        (resource.data.uid == request.auth.uid && request.resource.data.uid == request.auth.uid)             // owner edits
+        || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['playCnt'])                    // anyone: +1 play
+            && request.resource.data.playCnt == resource.data.get('playCnt', 0) + 1));
       allow delete: if request.auth != null && resource.data.uid == request.auth.uid;
     }
     match /blobs/{id} {                               // images + published game packs (see backend/firebase-blobs.js)
